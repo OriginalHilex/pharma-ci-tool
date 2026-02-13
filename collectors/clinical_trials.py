@@ -104,8 +104,6 @@ class ClinicalTrialsCollector(BaseCollector):
         """
         or_query = asset.or_query()
         extra_params = {"query.intr": or_query}
-        # Remove query.term since we're using query.intr
-        kwargs["extra_params"] = extra_params
         return self._collect_with_params(extra_params, **kwargs)
 
     def collect_by_disease(self, disease: DiseaseConfig, **kwargs) -> list[dict[str, Any]]:
@@ -120,7 +118,6 @@ class ClinicalTrialsCollector(BaseCollector):
             "query.cond": or_query,
             "filter.overallStatus": "RECRUITING,ACTIVE_NOT_RECRUITING,ENROLLING_BY_INVITATION,NOT_YET_RECRUITING,COMPLETED",
         }
-        kwargs["extra_params"] = extra_params
         return self._collect_with_params(extra_params, **kwargs)
 
     def _collect_with_params(self, extra_params: dict, **kwargs) -> list[dict[str, Any]]:

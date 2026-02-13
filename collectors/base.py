@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 import logging
-import httpx
+import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -11,9 +11,14 @@ logger = logging.getLogger(__name__)
 class BaseCollector(ABC):
     """Base class for all data collectors."""
 
+    DEFAULT_HEADERS = {
+        "User-Agent": "PharmaCI-Tool/1.0",
+    }
+
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
-        self.client = httpx.Client(timeout=timeout)
+        self.session = requests.Session()
+        self.session.headers.update(self.DEFAULT_HEADERS)
 
     def __enter__(self):
         return self
@@ -22,8 +27,8 @@ class BaseCollector(ABC):
         self.close()
 
     def close(self):
-        """Close the HTTP client."""
-        self.client.close()
+        """Close the HTTP session."""
+        self.session.close()
 
     @abstractmethod
     def collect(self, query: str, **kwargs) -> list[dict[str, Any]]:
@@ -55,7 +60,7 @@ class BaseCollector(ABC):
         params: dict | None = None,
         headers: dict | None = None,
         json_data: dict | None = None,
-    ) -> httpx.Response:
+    ) -> requests.Response:
         """
         Make HTTP request with retry logic.
 
@@ -70,12 +75,13 @@ class BaseCollector(ABC):
             HTTP response
         """
         logger.debug(f"Making {method} request to {url}")
-        response = self.client.request(
+        response = self.session.request(
             method=method,
             url=url,
             params=params,
             headers=headers,
             json=json_data,
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response
