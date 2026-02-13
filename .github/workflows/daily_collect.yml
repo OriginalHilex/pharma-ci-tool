@@ -27,6 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Initialize database and seed data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/init_db.py
+          python scripts/seed_data.py
+
       - name: Run data collectors
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

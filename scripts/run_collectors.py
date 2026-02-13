@@ -71,10 +71,16 @@ def main():
         f"{len(search_config.diseases)} diseases"
     )
 
-    # Resolve asset DB IDs for linking
-    with get_session() as session:
-        db_assets = {a.name: a.id for a in session.query(Asset).all()}
-        db_indications = {i.name: i.id for i in session.query(Indication).all()}
+    # Resolve asset DB IDs for linking (graceful if tables are empty)
+    db_assets = {}
+    db_indications = {}
+    try:
+        with get_session() as session:
+            db_assets = {a.name: a.id for a in session.query(Asset).all()}
+            db_indications = {i.name: i.id for i in session.query(Indication).all()}
+    except Exception as e:
+        logger.warning(f"Could not load DB assets/indications (tables may not exist): {e}")
+        logger.warning("Records will be stored without asset/indication links")
 
     # ── Asset-specific monitoring (indication-agnostic) ──────────────
     for asset_cfg in asset_configs:
