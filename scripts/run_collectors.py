@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manually run data collectors for all tracked assets."""
+"""Manually run data collectors using centralized search configuration."""
 
 import sys
 import logging
@@ -29,7 +29,18 @@ def main():
     parser.add_argument(
         "--asset",
         type=str,
-        help="Specific asset name to collect for (default: all)",
+        help="Specific asset name to collect for (default: all from config)",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to search_config.yaml (default: config/search_config.yaml)",
+    )
+    parser.add_argument(
+        "--recent-days",
+        type=int,
+        default=7,
+        help="For patents: only fetch patents from the last N days (default: 7)",
     )
     args = parser.parse_args()
 
@@ -42,85 +53,142 @@ def main():
         PatentsCollector,
     )
     from services.data_processor import DataProcessor
+    from config.search_config import load_search_config
 
+    search_config = load_search_config(args.config)
     processor = DataProcessor()
 
-    with get_session() as session:
-        # Get assets to process
-        if args.asset:
-            assets = session.query(Asset).filter_by(name=args.asset).all()
-            if not assets:
-                logger.error(f"Asset not found: {args.asset}")
-                return
-        else:
-            assets = session.query(Asset).all()
-
-        indications = session.query(Indication).all()
-
-        if not assets:
-            logger.warning("No assets in database. Run seed_data.py first.")
+    # Filter to specific asset if requested
+    asset_configs = search_config.assets
+    if args.asset:
+        asset_configs = [a for a in asset_configs if args.asset.lower() in a.name.lower()]
+        if not asset_configs:
+            logger.error(f"Asset not found in config: {args.asset}")
             return
 
-        logger.info(f"Collecting data for {len(assets)} assets and {len(indications)} indications")
+    logger.info(
+        f"Collecting data for {len(asset_configs)} assets and "
+        f"{len(search_config.diseases)} diseases"
+    )
 
-        for asset in assets:
-            logger.info(f"\n{'='*50}")
-            logger.info(f"Processing asset: {asset.name}")
-            logger.info(f"{'='*50}")
+    # Resolve asset DB IDs for linking
+    with get_session() as session:
+        db_assets = {a.name: a.id for a in session.query(Asset).all()}
+        db_indications = {i.name: i.id for i in session.query(Indication).all()}
 
-            # Clinical Trials
-            if args.source in ["all", "trials"]:
-                logger.info("Collecting clinical trials...")
-                with ClinicalTrialsCollector() as collector:
-                    trials = collector.collect_by_drug(asset.name, max_results=50)
-                    count = processor.process_clinical_trials(trials, asset_id=asset.id)
-                    logger.info(f"  Stored {count} trials")
+    # ── Asset-specific monitoring (indication-agnostic) ──────────────
+    for asset_cfg in asset_configs:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Asset monitoring: {asset_cfg.name}")
+        logger.info(f"  Aliases: {', '.join(asset_cfg.aliases)}")
+        logger.info(f"{'='*60}")
 
-            # PubMed
-            if args.source in ["all", "pubmed"]:
-                logger.info("Collecting publications...")
-                with PubMedCollector() as collector:
-                    pubs = collector.collect(asset.name, max_results=30)
-                    count = processor.process_publications(pubs, asset_id=asset.id)
-                    logger.info(f"  Stored {count} publications")
+        asset_id = db_assets.get(asset_cfg.name)
 
-            # News
-            if args.source in ["all", "news"]:
-                logger.info("Collecting news...")
-                with NewsCollector() as collector:
-                    news = collector.collect_for_drug(asset.name, max_results=30)
-                    count = processor.process_news(news, asset_id=asset.id)
-                    logger.info(f"  Stored {count} news articles")
-
-            # Patents
-            if args.source in ["all", "patents"]:
-                logger.info("Collecting patents...")
-                with PatentsCollector() as collector:
-                    patents = collector.collect(
-                        asset.name,
-                        assignee=asset.company.name if asset.company else None,
-                        max_results=20,
-                    )
-                    count = processor.process_patents(patents, asset_id=asset.id)
-                    logger.info(f"  Stored {count} patents")
-
-        # Collect competitive landscape for indications
+        # Clinical Trials — asset
         if args.source in ["all", "trials"]:
-            for indication in indications:
-                logger.info(f"\n{'='*50}")
-                logger.info(f"Collecting competitive landscape: {indication.name}")
-                logger.info(f"{'='*50}")
+            logger.info("  [trials] Collecting by asset aliases...")
+            with ClinicalTrialsCollector() as collector:
+                trials = collector.collect_by_asset(asset_cfg, max_results=50)
+                count = processor.process_clinical_trials(
+                    trials, asset_id=asset_id, search_type="asset"
+                )
+                logger.info(f"  [trials] Stored {count} trials")
 
-                with ClinicalTrialsCollector() as collector:
-                    trials = collector.collect_by_indication(
-                        indication.name,
-                        max_results=100,
-                    )
-                    count = processor.process_clinical_trials(
-                        trials,
-                        indication_id=indication.id,
-                    )
-                    logger.info(f"  Stored {count} trials for {indication.name}")
+        # PubMed — asset
+        if args.source in ["all", "pubmed"]:
+            logger.info("  [pubmed] Collecting by asset aliases...")
+            with PubMedCollector() as collector:
+                pubs = collector.collect_by_asset(asset_cfg, max_results=30)
+                count = processor.process_publications(
+                    pubs, asset_id=asset_id, search_type="asset"
+                )
+                logger.info(f"  [pubmed] Stored {count} publications")
+
+        # News — asset
+        if args.source in ["all", "news"]:
+            logger.info("  [news] Collecting by asset aliases...")
+            with NewsCollector() as collector:
+                news = collector.collect_by_asset(asset_cfg, max_results=30)
+                count = processor.process_news(
+                    news, asset_id=asset_id, search_type="asset"
+                )
+                logger.info(f"  [news] Stored {count} news articles")
+
+        # Patents — asset (recent only)
+        if args.source in ["all", "patents"]:
+            logger.info(f"  [patents] Collecting by asset aliases (last {args.recent_days} days)...")
+            with PatentsCollector() as collector:
+                patents = collector.collect_by_asset(
+                    asset_cfg,
+                    max_results=20,
+                    recent_days=args.recent_days,
+                )
+                count = processor.process_patents(
+                    patents, asset_id=asset_id, search_type="asset"
+                )
+                logger.info(f"  [patents] Stored {count} patents")
+
+    # ── Disease discovery monitoring ─────────────────────────────────
+    for disease_cfg in search_config.diseases:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Disease discovery: {disease_cfg.name}")
+        logger.info(f"  Aliases: {', '.join(disease_cfg.aliases)}")
+        logger.info(f"{'='*60}")
+
+        indication_id = db_indications.get(disease_cfg.name)
+
+        # Clinical Trials — disease (interventional only)
+        if args.source in ["all", "trials"]:
+            logger.info("  [trials] Collecting interventional trials for disease...")
+            with ClinicalTrialsCollector() as collector:
+                trials = collector.collect_by_disease(disease_cfg, max_results=100)
+                count = processor.process_clinical_trials(
+                    trials, indication_id=indication_id, search_type="disease_discovery"
+                )
+                logger.info(f"  [trials] Stored {count} trials")
+
+        # PubMed — disease + intervention keywords
+        if args.source in ["all", "pubmed"]:
+            logger.info("  [pubmed] Collecting disease + intervention publications...")
+            with PubMedCollector() as collector:
+                pubs = collector.collect_by_disease(
+                    disease_cfg,
+                    search_config.intervention_keywords,
+                    max_results=30,
+                )
+                count = processor.process_publications(
+                    pubs, search_type="disease_discovery"
+                )
+                logger.info(f"  [pubmed] Stored {count} publications")
+
+        # News — disease + discovery keywords
+        if args.source in ["all", "news"]:
+            logger.info("  [news] Collecting disease discovery news...")
+            with NewsCollector() as collector:
+                news = collector.collect_by_disease(
+                    disease_cfg,
+                    search_config.news_discovery_keywords,
+                    max_results=30,
+                )
+                count = processor.process_news(
+                    news, search_type="disease_discovery"
+                )
+                logger.info(f"  [news] Stored {count} news articles")
+
+        # Patents — disease (recent only)
+        if args.source in ["all", "patents"]:
+            logger.info(f"  [patents] Collecting disease-linked patents (last {args.recent_days} days)...")
+            with PatentsCollector() as collector:
+                patents = collector.collect_by_disease(
+                    disease_cfg,
+                    max_results=20,
+                    recent_days=args.recent_days,
+                )
+                count = processor.process_patents(
+                    patents, search_type="disease_discovery"
+                )
+                logger.info(f"  [patents] Stored {count} patents")
 
     logger.info("\nCollection complete!")
 

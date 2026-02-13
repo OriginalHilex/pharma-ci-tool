@@ -1,10 +1,11 @@
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import re
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 from .base import BaseCollector
+from config.search_config import AssetConfig, DiseaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,30 @@ class PatentsCollector(BaseCollector):
             **kwargs:
                 - max_results: Maximum number of results (default 20)
                 - assignee: Filter by patent assignee/company
+                - after_date: Only patents after this date (datetime or str YYYY-MM-DD)
+                - recent_days: Shortcut — only patents from the last N days (default: None)
 
         Returns:
             List of patent records
         """
         max_results = kwargs.get("max_results", 20)
         assignee = kwargs.get("assignee")
+        after_date = kwargs.get("after_date")
+        recent_days = kwargs.get("recent_days")
 
         # Build search query
         search_query = query
+
         if assignee:
-            search_query = f'{query} assignee:"{assignee}"'
+            search_query = f'{search_query} assignee:"{assignee}"'
+
+        # Date filtering via Google Patents query syntax
+        if recent_days and not after_date:
+            after_date = (datetime.utcnow() - timedelta(days=recent_days)).strftime("%Y-%m-%d")
+        if after_date:
+            if isinstance(after_date, datetime):
+                after_date = after_date.strftime("%Y-%m-%d")
+            search_query = f'{search_query} after:{after_date}'
 
         encoded_query = quote_plus(search_query)
         search_url = f"{self.base_url}/?q={encoded_query}&oq={encoded_query}"
@@ -59,6 +73,26 @@ class PatentsCollector(BaseCollector):
 
         logger.info(f"Collected {len(patents)} patents for query: {query}")
         return patents
+
+    def collect_by_asset(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Asset-specific patent monitoring with aliases.
+
+        Builds an OR query from all asset aliases.
+        """
+        query = asset.or_query()
+        logger.info(f"Patents asset query: {query}")
+        return self.collect(query, **kwargs)
+
+    def collect_by_disease(self, disease: DiseaseConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Disease-linked patent monitoring.
+
+        Builds an OR query from disease aliases.
+        """
+        query = disease.or_query()
+        logger.info(f"Patents disease query: {query}")
+        return self.collect(query, **kwargs)
 
     def _parse_search_results(self, html: str, max_results: int) -> list[dict[str, Any]]:
         """Parse patent search results from HTML."""

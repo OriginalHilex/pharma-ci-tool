@@ -3,6 +3,7 @@ import logging
 import xml.etree.ElementTree as ET
 from .base import BaseCollector
 from config import settings
+from config.search_config import AssetConfig, DiseaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,42 @@ class PubMedCollector(BaseCollector):
 
         logger.info(f"Collected {len(publications)} publications for query: {query}")
         return publications
+
+    def collect_by_asset(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Asset-specific monitoring (indication-agnostic).
+
+        Builds an OR query from all asset aliases so we capture any
+        publication mentioning the drug under any name.
+        """
+        query = asset.or_query()
+        logger.info(f"PubMed asset query: {query}")
+        return self.collect(query, **kwargs)
+
+    def collect_by_disease(
+        self,
+        disease: DiseaseConfig,
+        intervention_keywords: list[str],
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """
+        Disease + intervention discovery.
+
+        Combines disease aliases with intervention keywords to filter out
+        pure biology/basic science and focus on pharma interventions.
+        """
+        disease_part = disease.or_query()
+        kw_terms = []
+        for kw in intervention_keywords:
+            if " " in kw:
+                kw_terms.append(f'"{kw}"')
+            else:
+                kw_terms.append(kw)
+        keywords_part = " OR ".join(kw_terms)
+
+        query = f"({disease_part}) AND ({keywords_part})"
+        logger.info(f"PubMed disease+intervention query: {query}")
+        return self.collect(query, **kwargs)
 
     def _search(
         self,

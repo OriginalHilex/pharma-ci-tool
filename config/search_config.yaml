@@ -1,0 +1,57 @@
+# Centralized CI Tool Search Configuration
+# Edit this file to add/remove assets, diseases, and keywords
+# without modifying any Python code.
+
+assets:
+  - name: "Zolbetuximab (Vyloy)"
+    aliases:
+      - "Zolbetuximab"
+      - "Vyloy"
+      - "IMAB362"
+      - "Claudin 18.2"
+      - "CLDN18.2"
+
+  - name: "Gilteritinib (Xospata)"
+    aliases:
+      - "Gilteritinib"
+      - "Xospata"
+      - "FLT3 inhibitor"
+
+diseases:
+  - name: "Gastric Cancer"
+    aliases:
+      - "gastric cancer"
+      - "GEJ"
+      - "gastroesophageal junction"
+      - "gastroesophageal junction adenocarcinoma"
+
+  - name: "Acute Myeloid Leukemia"
+    aliases:
+      - "AML"
+      - "acute myeloid leukemia"
+
+# Keywords appended to disease queries for PubMed to filter out
+# pure biology/basic science and focus on pharma interventions.
+intervention_keywords:
+  - "drug"
+  - "therapy"
+  - "antibody"
+  - "ADC"
+  - "inhibitor"
+  - "agonist"
+  - "antagonist"
+  - "small molecule"
+  - "targeted therapy"
+  - "phase trial"
+
+# Keywords appended to disease queries for News to detect
+# competitor activity, pipeline updates, and regulatory events.
+news_discovery_keywords:
+  - "drug"
+  - "trial"
+  - "approval"
+  - "FDA"
+  - "EMA"
+  - "pipeline"
+  - "competitor"
+  - "phase"

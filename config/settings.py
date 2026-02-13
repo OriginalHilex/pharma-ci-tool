@@ -25,6 +25,12 @@ class Settings(BaseSettings):
         description="Hours between data collection runs"
     )
 
+    # Search configuration
+    search_config_path: str | None = Field(
+        default=None,
+        description="Path to search_config.yaml (defaults to config/search_config.yaml)"
+    )
+
     # API Endpoints
     clinicaltrials_api_url: str = "https://clinicaltrials.gov/api/v2"
     pubmed_api_url: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"

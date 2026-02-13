@@ -6,6 +6,7 @@ from database.models import (
     Asset,
     Indication,
     ClinicalTrial,
+    ClinicalTrialChange,
     Publication,
     NewsArticle,
     Patent,
@@ -13,6 +14,9 @@ from database.models import (
 from database.connection import get_session
 
 logger = logging.getLogger(__name__)
+
+# Fields tracked for change detection on clinical trials
+TRACKED_TRIAL_FIELDS = ["status", "phase", "enrollment", "completion_date"]
 
 
 class DataProcessor:
@@ -23,17 +27,13 @@ class DataProcessor:
         trials: list[dict[str, Any]],
         asset_id: int | None = None,
         indication_id: int | None = None,
+        search_type: str | None = None,
     ) -> int:
         """
-        Store clinical trial data.
+        Store clinical trial data with change detection.
 
-        Args:
-            trials: List of trial records from collector
-            asset_id: Associated asset ID (if known)
-            indication_id: Associated indication ID (if known)
-
-        Returns:
-            Number of records upserted
+        Before upserting, compares tracked fields against existing records
+        and logs changes to clinical_trial_changes.
         """
         if not trials:
             return 0
@@ -42,8 +42,15 @@ class DataProcessor:
         with get_session() as session:
             for trial in trials:
                 try:
+                    nct_id = trial["nct_id"]
+
+                    # Detect changes against existing record
+                    existing = session.query(ClinicalTrial).filter_by(nct_id=nct_id).first()
+                    if existing:
+                        self._detect_trial_changes(session, existing, trial)
+
                     stmt = insert(ClinicalTrial).values(
-                        nct_id=trial["nct_id"],
+                        nct_id=nct_id,
                         asset_id=asset_id,
                         indication_id=indication_id,
                         title=trial.get("title"),
@@ -56,6 +63,8 @@ class DataProcessor:
                         primary_endpoint=trial.get("primary_endpoint"),
                         results_summary=trial.get("summary"),
                         source_url=trial.get("source_url"),
+                        last_updated=trial.get("last_updated"),
+                        search_type=search_type,
                         raw_data=trial.get("raw_data"),
                     ).on_conflict_do_update(
                         index_elements=["nct_id"],
@@ -66,6 +75,7 @@ class DataProcessor:
                             "completion_date": trial.get("completion_date"),
                             "primary_endpoint": trial.get("primary_endpoint"),
                             "results_summary": trial.get("summary"),
+                            "last_updated": trial.get("last_updated"),
                             "raw_data": trial.get("raw_data"),
                         },
                     )
@@ -77,10 +87,39 @@ class DataProcessor:
         logger.info(f"Processed {count} clinical trials")
         return count
 
+    def _detect_trial_changes(
+        self,
+        session: Session,
+        existing: ClinicalTrial,
+        new_data: dict[str, Any],
+    ) -> None:
+        """Compare tracked fields and record changes."""
+        for field_name in TRACKED_TRIAL_FIELDS:
+            old_value = getattr(existing, field_name, None)
+            new_value = new_data.get(field_name)
+
+            # Normalize to string for comparison
+            old_str = str(old_value) if old_value is not None else None
+            new_str = str(new_value) if new_value is not None else None
+
+            if old_str != new_str and new_str is not None:
+                change = ClinicalTrialChange(
+                    nct_id=existing.nct_id,
+                    field_name=field_name,
+                    old_value=old_str,
+                    new_value=new_str,
+                )
+                session.add(change)
+                logger.info(
+                    f"Change detected: {existing.nct_id} {field_name}: "
+                    f"{old_str} -> {new_str}"
+                )
+
     def process_publications(
         self,
         publications: list[dict[str, Any]],
         asset_id: int | None = None,
+        search_type: str | None = None,
     ) -> int:
         """Store publication data."""
         if not publications:
@@ -100,6 +139,7 @@ class DataProcessor:
                         abstract=pub.get("abstract"),
                         doi=pub.get("doi"),
                         source_url=pub.get("source_url"),
+                        search_type=search_type,
                     ).on_conflict_do_update(
                         index_elements=["pmid"],
                         set_={
@@ -120,6 +160,7 @@ class DataProcessor:
         self,
         articles: list[dict[str, Any]],
         asset_id: int | None = None,
+        search_type: str | None = None,
     ) -> int:
         """Store news article data."""
         if not articles:
@@ -137,6 +178,7 @@ class DataProcessor:
                         url=article.get("url"),
                         summary=article.get("summary"),
                         sentiment_score=article.get("sentiment_score"),
+                        search_type=search_type,
                     ).on_conflict_do_nothing(
                         index_elements=["url"],
                     )
@@ -153,6 +195,7 @@ class DataProcessor:
         self,
         patents: list[dict[str, Any]],
         asset_id: int | None = None,
+        search_type: str | None = None,
     ) -> int:
         """Store patent data."""
         if not patents:
@@ -172,6 +215,7 @@ class DataProcessor:
                         abstract=patent.get("abstract"),
                         claims_count=patent.get("claims_count"),
                         source_url=patent.get("source_url"),
+                        search_type=search_type,
                     ).on_conflict_do_update(
                         index_elements=["patent_number"],
                         set_={

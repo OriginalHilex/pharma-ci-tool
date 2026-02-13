@@ -11,6 +11,7 @@ from services.data_processor import DataProcessor
 from database.connection import get_session
 from database.models import Asset, Indication
 from config import settings
+from config.search_config import get_search_config
 
 logger = logging.getLogger(__name__)
 
@@ -18,50 +19,72 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def run_collection_job():
-    """Run data collection for all tracked assets and indications."""
+    """Run data collection for all tracked assets and indications using search config."""
     logger.info("Starting scheduled data collection...")
 
+    search_config = get_search_config()
     processor = DataProcessor()
 
+    # Resolve DB IDs
     with get_session() as session:
-        # Get all assets and their indications
-        assets = session.query(Asset).all()
-        indications = session.query(Indication).all()
+        db_assets = {a.name: a.id for a in session.query(Asset).all()}
+        db_indications = {i.name: i.id for i in session.query(Indication).all()}
 
-        # Collect data for each asset
-        for asset in assets:
-            logger.info(f"Collecting data for asset: {asset.name}")
+    # ── Asset-specific monitoring ────────────────────────────────────
+    for asset_cfg in search_config.assets:
+        logger.info(f"Asset monitoring: {asset_cfg.name}")
+        asset_id = db_assets.get(asset_cfg.name)
 
-            # Clinical trials for the drug
-            with ClinicalTrialsCollector() as collector:
-                trials = collector.collect_by_drug(asset.name)
-                processor.process_clinical_trials(trials, asset_id=asset.id)
+        # Clinical trials
+        with ClinicalTrialsCollector() as collector:
+            trials = collector.collect_by_asset(asset_cfg)
+            processor.process_clinical_trials(trials, asset_id=asset_id, search_type="asset")
 
-            # Publications
-            with PubMedCollector() as collector:
-                pubs = collector.collect(asset.name)
-                processor.process_publications(pubs, asset_id=asset.id)
+        # Publications
+        with PubMedCollector() as collector:
+            pubs = collector.collect_by_asset(asset_cfg)
+            processor.process_publications(pubs, asset_id=asset_id, search_type="asset")
 
-            # News
-            with NewsCollector() as collector:
-                news = collector.collect_for_drug(asset.name)
-                processor.process_news(news, asset_id=asset.id)
+        # News
+        with NewsCollector() as collector:
+            news = collector.collect_by_asset(asset_cfg)
+            processor.process_news(news, asset_id=asset_id, search_type="asset")
 
-            # Patents
-            with PatentsCollector() as collector:
-                patents = collector.collect(
-                    asset.name,
-                    assignee=asset.company.name if asset.company else None,
-                )
-                processor.process_patents(patents, asset_id=asset.id)
+        # Patents (last 7 days)
+        with PatentsCollector() as collector:
+            patents = collector.collect_by_asset(asset_cfg, recent_days=7)
+            processor.process_patents(patents, asset_id=asset_id, search_type="asset")
 
-        # Collect competitive landscape for each indication
-        for indication in indications:
-            logger.info(f"Collecting competitive landscape for: {indication.name}")
+    # ── Disease discovery monitoring ─────────────────────────────────
+    for disease_cfg in search_config.diseases:
+        logger.info(f"Disease discovery: {disease_cfg.name}")
+        indication_id = db_indications.get(disease_cfg.name)
 
-            with ClinicalTrialsCollector() as collector:
-                trials = collector.collect_by_indication(indication.name)
-                processor.process_clinical_trials(trials, indication_id=indication.id)
+        # Clinical trials (interventional only)
+        with ClinicalTrialsCollector() as collector:
+            trials = collector.collect_by_disease(disease_cfg)
+            processor.process_clinical_trials(
+                trials, indication_id=indication_id, search_type="disease_discovery"
+            )
+
+        # PubMed (disease + intervention keywords)
+        with PubMedCollector() as collector:
+            pubs = collector.collect_by_disease(
+                disease_cfg, search_config.intervention_keywords
+            )
+            processor.process_publications(pubs, search_type="disease_discovery")
+
+        # News (disease + discovery keywords)
+        with NewsCollector() as collector:
+            news = collector.collect_by_disease(
+                disease_cfg, search_config.news_discovery_keywords
+            )
+            processor.process_news(news, search_type="disease_discovery")
+
+        # Patents (disease, last 7 days)
+        with PatentsCollector() as collector:
+            patents = collector.collect_by_disease(disease_cfg, recent_days=7)
+            processor.process_patents(patents, search_type="disease_discovery")
 
     logger.info("Scheduled data collection completed.")
 

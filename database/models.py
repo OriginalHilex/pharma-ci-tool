@@ -114,11 +114,17 @@ class ClinicalTrial(Base):
     source_url: Mapped[str] = mapped_column(String(512))
     sponsor: Mapped[Optional[str]] = mapped_column(String(255))
     raw_data: Mapped[Optional[dict]] = mapped_column(JSONB)
+    last_updated: Mapped[Optional[datetime]] = mapped_column(Date)
+    search_type: Mapped[Optional[str]] = mapped_column(String(30))  # "asset" or "disease_discovery"
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     # Relationships
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="clinical_trials")
     indication: Mapped[Optional["Indication"]] = relationship(back_populates="clinical_trials")
+    changes: Mapped[list["ClinicalTrialChange"]] = relationship(back_populates="trial")
 
     __table_args__ = (
         Index("ix_clinical_trials_status", "status"),
@@ -140,6 +146,7 @@ class Publication(Base):
     abstract: Mapped[Optional[str]] = mapped_column(Text)
     doi: Mapped[Optional[str]] = mapped_column(String(100))
     source_url: Mapped[str] = mapped_column(String(512))
+    search_type: Mapped[Optional[str]] = mapped_column(String(30))
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -162,6 +169,7 @@ class NewsArticle(Base):
     url: Mapped[str] = mapped_column(String(1024), unique=True)
     summary: Mapped[Optional[str]] = mapped_column(Text)
     sentiment_score: Mapped[Optional[float]] = mapped_column(Float)
+    search_type: Mapped[Optional[str]] = mapped_column(String(30))
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -186,6 +194,7 @@ class Patent(Base):
     abstract: Mapped[Optional[str]] = mapped_column(Text)
     claims_count: Mapped[Optional[int]] = mapped_column(Integer)
     source_url: Mapped[str] = mapped_column(String(512))
+    search_type: Mapped[Optional[str]] = mapped_column(String(30))
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -193,4 +202,23 @@ class Patent(Base):
 
     __table_args__ = (
         Index("ix_patents_filing_date", "filing_date"),
+    )
+
+
+class ClinicalTrialChange(Base):
+    """Tracks field-level changes to clinical trials across collection runs."""
+    __tablename__ = "clinical_trial_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nct_id: Mapped[str] = mapped_column(String(20), ForeignKey("clinical_trials.nct_id"))
+    field_name: Mapped[str] = mapped_column(String(50))
+    old_value: Mapped[Optional[str]] = mapped_column(Text)
+    new_value: Mapped[Optional[str]] = mapped_column(Text)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    trial: Mapped["ClinicalTrial"] = relationship(back_populates="changes")
+
+    __table_args__ = (
+        Index("ix_trial_changes_nct_detected", "nct_id", "detected_at"),
     )

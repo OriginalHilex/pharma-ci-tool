@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 import feedparser
 from .base import BaseCollector
 from config import settings
+from config.search_config import AssetConfig, DiseaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,47 @@ class NewsCollector(BaseCollector):
         logger.info(f"Collected {len(articles)} news articles for query: {query}")
         return articles
 
+    def collect_by_asset(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Asset monitoring with aliases.
+
+        Builds an OR query from all asset aliases with pharma context.
+        """
+        # Quote each alias and OR them together
+        alias_parts = []
+        for alias in asset.aliases:
+            alias_parts.append(f'"{alias}"')
+        aliases_query = " OR ".join(alias_parts)
+
+        query = f'({aliases_query}) AND (pharma OR clinical OR FDA OR trial)'
+        logger.info(f"News asset query: {query}")
+        return self.collect(query, **kwargs)
+
+    def collect_by_disease(
+        self,
+        disease: DiseaseConfig,
+        discovery_keywords: list[str],
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """
+        Disease discovery monitoring.
+
+        Combines disease aliases with competitor/pipeline/approval keywords.
+        """
+        alias_parts = []
+        for alias in disease.aliases:
+            if " " in alias:
+                alias_parts.append(f'"{alias}"')
+            else:
+                alias_parts.append(alias)
+        disease_query = " OR ".join(alias_parts)
+
+        keywords_query = " OR ".join(discovery_keywords)
+
+        query = f'({disease_query}) AND ({keywords_query})'
+        logger.info(f"News disease discovery query: {query}")
+        return self.collect(query, **kwargs)
+
     def _parse_entry(self, entry: Any) -> dict[str, Any] | None:
         """Parse a single RSS entry."""
         try:
@@ -106,7 +148,7 @@ class NewsCollector(BaseCollector):
                 "published_at": published_at,
                 "url": url,
                 "summary": summary.strip() if summary else None,
-                "sentiment_score": None,  # Could add sentiment analysis later
+                "sentiment_score": None,
             }
 
         except Exception as e:
@@ -114,12 +156,11 @@ class NewsCollector(BaseCollector):
             return None
 
     def collect_for_drug(self, drug_name: str, **kwargs) -> list[dict[str, Any]]:
-        """Collect news specifically about a drug."""
-        # Add pharma context to improve relevance
+        """Collect news specifically about a drug (legacy method)."""
         query = f'"{drug_name}" pharma OR clinical OR FDA'
         return self.collect(query, **kwargs)
 
     def collect_for_company(self, company_name: str, **kwargs) -> list[dict[str, Any]]:
-        """Collect news about a pharmaceutical company."""
+        """Collect news about a pharmaceutical company (legacy method)."""
         query = f'"{company_name}" pharmaceutical OR biotech OR drug'
         return self.collect(query, **kwargs)
