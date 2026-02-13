@@ -7,6 +7,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sqlalchemy import inspect
 from database.connection import init_db, get_engine
 from database.models import Base
 
@@ -19,7 +20,7 @@ def main():
 
     # Verify tables were created
     engine = get_engine()
-    inspector = engine.dialect.get_inspector(engine)
+    inspector = inspect(engine)
     tables = inspector.get_table_names()
 
     print(f"\nCreated {len(tables)} tables:")
