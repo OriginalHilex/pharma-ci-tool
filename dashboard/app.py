@@ -83,4 +83,11 @@ try:
 
 except Exception as e:
     st.error(f"Database connection error: {e}")
-    st.info("Make sure to configure DATABASE_URL in .env and run init_db.py")
+    st.info(
+        "**Setup steps:**\n"
+        "1. Copy `.env.example` to `.env`\n"
+        "2. Set `DATABASE_URL` to your Neon connection string: "
+        "`postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require`\n"
+        "3. Run `python scripts/init_db.py` then `python scripts/seed_data.py`\n"
+        "4. Restart the dashboard"
+    )
