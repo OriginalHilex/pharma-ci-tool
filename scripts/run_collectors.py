@@ -39,8 +39,8 @@ def main():
     parser.add_argument(
         "--recent-days",
         type=int,
-        default=7,
-        help="For patents: only fetch patents from the last N days (default: 7)",
+        default=None,
+        help="For patents: only fetch patents from the last N days (default: from config, 365)",
     )
     args = parser.parse_args()
 
@@ -57,6 +57,8 @@ def main():
 
     search_config = load_search_config(args.config)
     processor = DataProcessor()
+
+    recent_days = args.recent_days if args.recent_days is not None else search_config.patent_recent_days
 
     # Filter to specific asset if requested
     asset_configs = search_config.assets
@@ -123,12 +125,12 @@ def main():
 
         # Patents — asset (recent only)
         if args.source in ["all", "patents"]:
-            logger.info(f"  [patents] Collecting by asset aliases (last {args.recent_days} days)...")
+            logger.info(f"  [patents] Collecting by asset aliases (last {recent_days} days)...")
             with PatentsCollector() as collector:
                 patents = collector.collect_by_asset(
                     asset_cfg,
                     max_results=20,
-                    recent_days=args.recent_days,
+                    recent_days=recent_days,
                 )
                 count = processor.process_patents(
                     patents, asset_id=asset_id, search_type="asset"
@@ -184,12 +186,12 @@ def main():
 
         # Patents — disease (recent only)
         if args.source in ["all", "patents"]:
-            logger.info(f"  [patents] Collecting disease-linked patents (last {args.recent_days} days)...")
+            logger.info(f"  [patents] Collecting disease-linked patents (last {recent_days} days)...")
             with PatentsCollector() as collector:
                 patents = collector.collect_by_disease(
                     disease_cfg,
                     max_results=20,
-                    recent_days=args.recent_days,
+                    recent_days=recent_days,
                 )
                 count = processor.process_patents(
                     patents, search_type="disease_discovery"

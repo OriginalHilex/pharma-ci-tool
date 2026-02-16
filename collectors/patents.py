@@ -5,7 +5,7 @@ import re
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 from .base import BaseCollector
-from config.search_config import AssetConfig, DiseaseConfig
+from config.search_config import AssetConfig, DiseaseConfig, get_search_config
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,8 @@ class PatentsCollector(BaseCollector):
         """
         query = asset.or_query()
         logger.info(f"Patents asset query: {query}")
-        return self.collect(query, **kwargs)
+        patents = self.collect(query, **kwargs)
+        return self._filter_relevant(patents, asset_aliases=asset.aliases)
 
     def collect_by_disease(self, disease: DiseaseConfig, **kwargs) -> list[dict[str, Any]]:
         """
@@ -92,7 +93,48 @@ class PatentsCollector(BaseCollector):
         """
         query = disease.or_query()
         logger.info(f"Patents disease query: {query}")
-        return self.collect(query, **kwargs)
+        patents = self.collect(query, **kwargs)
+        return self._filter_relevant(patents, asset_aliases=None)
+
+    def _filter_relevant(
+        self,
+        patents: list[dict[str, Any]],
+        asset_aliases: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Filter patents for pharma relevance using config keywords.
+
+        1. Keep if title+abstract contains at least one relevance keyword.
+        2. For non-asset queries (asset_aliases=None): also drop if title
+           matches a noise keyword — unless an asset alias appears in the title.
+        """
+        cfg = get_search_config()
+        relevance = [kw.lower() for kw in cfg.patent_relevance_keywords]
+        noise = [kw.lower() for kw in cfg.patent_noise_keywords]
+        aliases_lower = [a.lower() for a in asset_aliases] if asset_aliases else []
+
+        filtered = []
+        for patent in patents:
+            text = f"{patent.get('title', '')} {patent.get('abstract', '')}".lower()
+
+            # Must match at least one relevance keyword
+            if not any(kw in text for kw in relevance):
+                logger.debug(f"Dropping patent (no relevance match): {patent.get('title', '')[:60]}")
+                continue
+
+            # For non-asset queries, apply noise filter
+            if not asset_aliases:
+                title_lower = (patent.get("title") or "").lower()
+                has_alias = any(alias in title_lower for alias in aliases_lower)
+                if not has_alias and any(kw in title_lower for kw in noise):
+                    logger.debug(f"Dropping patent (noise match): {patent.get('title', '')[:60]}")
+                    continue
+
+            filtered.append(patent)
+
+        dropped = len(patents) - len(filtered)
+        if dropped:
+            logger.info(f"Relevance filter: kept {len(filtered)}/{len(patents)} patents ({dropped} dropped)")
+        return filtered
 
     def _parse_search_results(self, html: str, max_results: int) -> list[dict[str, Any]]:
         """Parse patent search results from HTML."""

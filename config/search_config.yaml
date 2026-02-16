@@ -43,6 +43,7 @@ intervention_keywords:
   - "small molecule"
   - "targeted therapy"
   - "phase trial"
+  - "immunotherapy"
 
 # Keywords appended to disease queries for News to detect
 # competitor activity, pipeline updates, and regulatory events.
@@ -55,3 +56,33 @@ news_discovery_keywords:
   - "pipeline"
   - "competitor"
   - "phase"
+
+# Patent collection settings
+patent_settings:
+  recent_days: 365
+  relevance_keywords:
+    - antibody
+    - monoclonal
+    - ADC
+    - conjugate
+    - inhibitor
+    - agonist
+    - antagonist
+    - kinase
+    - "small molecule"
+    - pharmaceutical
+    - formulation
+    - composition
+    - dosing
+    - treatment
+  noise_keywords:
+    - diagnostic
+    - assay
+    - biomarker
+    - detection
+    - device
+    - catheter
+    - stent
+    - imaging
+    - cosmetic
+    - agriculture

@@ -50,9 +50,9 @@ def run_collection_job():
             news = collector.collect_by_asset(asset_cfg)
             processor.process_news(news, asset_id=asset_id, search_type="asset")
 
-        # Patents (last 7 days)
+        # Patents
         with PatentsCollector() as collector:
-            patents = collector.collect_by_asset(asset_cfg, recent_days=7)
+            patents = collector.collect_by_asset(asset_cfg, recent_days=search_config.patent_recent_days)
             processor.process_patents(patents, asset_id=asset_id, search_type="asset")
 
     # ── Disease discovery monitoring ─────────────────────────────────
@@ -81,9 +81,9 @@ def run_collection_job():
             )
             processor.process_news(news, search_type="disease_discovery")
 
-        # Patents (disease, last 7 days)
+        # Patents (disease)
         with PatentsCollector() as collector:
-            patents = collector.collect_by_disease(disease_cfg, recent_days=7)
+            patents = collector.collect_by_disease(disease_cfg, recent_days=search_config.patent_recent_days)
             processor.process_patents(patents, search_type="disease_discovery")
 
     logger.info("Scheduled data collection completed.")

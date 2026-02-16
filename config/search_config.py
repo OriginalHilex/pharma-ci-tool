@@ -51,6 +51,9 @@ class SearchConfig:
     diseases: list[DiseaseConfig] = field(default_factory=list)
     intervention_keywords: list[str] = field(default_factory=list)
     news_discovery_keywords: list[str] = field(default_factory=list)
+    patent_recent_days: int = 365
+    patent_relevance_keywords: list[str] = field(default_factory=list)
+    patent_noise_keywords: list[str] = field(default_factory=list)
 
     def intervention_or_query(self, quote: bool = True) -> str:
         """Build OR query from intervention keywords."""
@@ -91,11 +94,16 @@ def load_search_config(config_path: str | Path | None = None) -> SearchConfig:
         for d in raw.get("diseases", [])
     ]
 
+    patent_settings = raw.get("patent_settings", {})
+
     return SearchConfig(
         assets=assets,
         diseases=diseases,
         intervention_keywords=raw.get("intervention_keywords", []),
         news_discovery_keywords=raw.get("news_discovery_keywords", []),
+        patent_recent_days=patent_settings.get("recent_days", 365),
+        patent_relevance_keywords=patent_settings.get("relevance_keywords", []),
+        patent_noise_keywords=patent_settings.get("noise_keywords", []),
     )
 
 

@@ -6,6 +6,8 @@ from config.search_config import AssetConfig, DiseaseConfig
 
 logger = logging.getLogger(__name__)
 
+ACTIVE_STATUSES = "NOT_YET_RECRUITING,RECRUITING,ENROLLING_BY_INVITATION,ACTIVE_NOT_RECRUITING"
+
 
 class ClinicalTrialsCollector(BaseCollector):
     """Collector for ClinicalTrials.gov API v2."""
@@ -103,7 +105,10 @@ class ClinicalTrialsCollector(BaseCollector):
         capturing any trial where this drug appears regardless of disease.
         """
         or_query = asset.or_query()
-        extra_params = {"query.intr": or_query}
+        extra_params = {
+            "query.intr": or_query,
+            "filter.overallStatus": ACTIVE_STATUSES,
+        }
         return self._collect_with_params(extra_params, **kwargs)
 
     def collect_by_disease(self, disease: DiseaseConfig, **kwargs) -> list[dict[str, Any]]:
@@ -116,7 +121,7 @@ class ClinicalTrialsCollector(BaseCollector):
         or_query = disease.or_query()
         extra_params = {
             "query.cond": or_query,
-            "filter.overallStatus": "RECRUITING,ACTIVE_NOT_RECRUITING,ENROLLING_BY_INVITATION,NOT_YET_RECRUITING,COMPLETED",
+            "filter.overallStatus": ACTIVE_STATUSES,
         }
         return self._collect_with_params(extra_params, **kwargs)
 
