@@ -115,17 +115,17 @@ class ClinicalTrialsCollector(BaseCollector):
 
     def collect_by_target(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
         """
-        Target-level monitoring: protein target search (no funder filter).
+        Target-level monitoring: protein target search.
 
         Searches the intervention field with target aliases,
-        filtered to interventional studies only.
+        filtered to interventional + industry-funded studies.
         """
         if not asset.targets:
             return []
         extra_params = {
             "query.intr": asset.target_or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
-            "filter.advanced": INTERVENTIONAL_FILTER,
+            "filter.advanced": f"{INTERVENTIONAL_FILTER} AND {INDUSTRY_FUNDER_FILTER}",
         }
         return self._collect_with_params(extra_params, **kwargs)
 
@@ -136,12 +136,12 @@ class ClinicalTrialsCollector(BaseCollector):
         Indication-level monitoring: disease search linked to an asset.
 
         Searches the condition field with indication aliases,
-        filtered to interventional studies only.
+        filtered to interventional + industry-funded studies.
         """
         extra_params = {
             "query.cond": indication.or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
-            "filter.advanced": INTERVENTIONAL_FILTER,
+            "filter.advanced": f"{INTERVENTIONAL_FILTER} AND {INDUSTRY_FUNDER_FILTER}",
         }
         return self._collect_with_params(extra_params, **kwargs)
 
@@ -150,18 +150,18 @@ class ClinicalTrialsCollector(BaseCollector):
         Disease discovery monitoring (standalone, no asset link).
 
         Searches the condition field with all disease aliases,
-        filtered to interventional studies only.
+        filtered to interventional + industry-funded studies.
         """
         extra_params = {
             "query.cond": disease.or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
-            "filter.advanced": INTERVENTIONAL_FILTER,
+            "filter.advanced": f"{INTERVENTIONAL_FILTER} AND {INDUSTRY_FUNDER_FILTER}",
         }
         return self._collect_with_params(extra_params, **kwargs)
 
     def _collect_with_params(self, extra_params: dict, **kwargs) -> list[dict[str, Any]]:
         """Run collection with extra API parameters, bypassing query.term."""
-        max_results = kwargs.get("max_results", 100)
+        max_results = kwargs.get("max_results", 10000)
         status_filter = kwargs.get("status")
 
         trials = []

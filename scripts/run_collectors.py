@@ -93,21 +93,12 @@ def main():
 
         asset_id = db_assets.get(asset_cfg.name)
 
-        # Clinical Trials — asset (drug names, industry-funded)
+        # Clinical Trials — target (protein targets)
         if args.source in ["all", "trials"]:
-            logger.info("  [trials] Collecting by asset aliases...")
-            with ClinicalTrialsCollector() as collector:
-                trials = collector.collect_by_asset(asset_cfg, max_results=50)
-                count = processor.process_clinical_trials(
-                    trials, asset_id=asset_id, search_type="asset"
-                )
-                logger.info(f"  [trials] Stored {count} asset-level trials")
-
-            # Clinical Trials — target (protein targets, no funder filter)
             if asset_cfg.targets:
                 logger.info(f"  [trials] Collecting by targets: {', '.join(asset_cfg.targets)}")
                 with ClinicalTrialsCollector() as collector:
-                    trials = collector.collect_by_target(asset_cfg, max_results=50)
+                    trials = collector.collect_by_target(asset_cfg)
                     count = processor.process_clinical_trials(
                         trials, asset_id=asset_id, search_type="target"
                     )
@@ -119,7 +110,7 @@ def main():
                 logger.info(f"  [trials] Collecting by indication: {ind_cfg.name}")
                 with ClinicalTrialsCollector() as collector:
                     trials = collector.collect_by_indication(
-                        asset_cfg, ind_cfg, max_results=100
+                        asset_cfg, ind_cfg,
                     )
                     count = processor.process_clinical_trials(
                         trials, asset_id=asset_id, indication_id=indication_id,
@@ -174,7 +165,7 @@ def main():
         if args.source in ["all", "trials"]:
             logger.info("  [trials] Collecting interventional trials for disease...")
             with ClinicalTrialsCollector() as collector:
-                trials = collector.collect_by_disease(disease_cfg, max_results=100)
+                trials = collector.collect_by_disease(disease_cfg)
                 count = processor.process_clinical_trials(
                     trials, indication_id=indication_id, search_type="disease_discovery"
                 )

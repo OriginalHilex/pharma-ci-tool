@@ -19,8 +19,8 @@ try:
 
         with col1:
             assets = session.query(Asset).all()
-            asset_options = ["All Assets"] + [a.name for a in assets]
-            selected_asset = st.selectbox("Asset", asset_options)
+            asset_options = ["All Targets"] + [a.name for a in assets]
+            selected_asset = st.selectbox("Target/Biomarker", asset_options)
 
         with col2:
             indications = session.query(Indication).all()
@@ -40,7 +40,7 @@ try:
         # Build query
         query = session.query(ClinicalTrial)
 
-        if selected_asset != "All Assets":
+        if selected_asset != "All Targets":
             asset = session.query(Asset).filter_by(name=selected_asset).first()
             if asset:
                 query = query.filter(ClinicalTrial.asset_id == asset.id)
