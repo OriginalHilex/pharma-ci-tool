@@ -30,11 +30,10 @@ try:
         with col3:
             status_options = [
                 "All Statuses",
+                "NOT_YET_RECRUITING",
                 "RECRUITING",
+                "ENROLLING_BY_INVITATION",
                 "ACTIVE_NOT_RECRUITING",
-                "COMPLETED",
-                "TERMINATED",
-                "WITHDRAWN",
             ]
             selected_status = st.selectbox("Status", status_options)
 

@@ -8,14 +8,29 @@ assets:
       - "Zolbetuximab"
       - "Vyloy"
       - "IMAB362"
+    targets:
       - "Claudin 18.2"
       - "CLDN18.2"
+    indications:
+      - name: "Gastric Cancer"
+        aliases:
+          - "gastric cancer"
+          - "GEJ"
+          - "gastroesophageal junction"
+          - "gastroesophageal junction adenocarcinoma"
 
   - name: "Gilteritinib (Xospata)"
     aliases:
       - "Gilteritinib"
       - "Xospata"
+    targets:
       - "FLT3 inhibitor"
+      - "FLT3"
+    indications:
+      - name: "Acute Myeloid Leukemia"
+        aliases:
+          - "AML"
+          - "acute myeloid leukemia"
 
 diseases:
   - name: "Gastric Cancer"

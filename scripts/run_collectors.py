@@ -93,7 +93,7 @@ def main():
 
         asset_id = db_assets.get(asset_cfg.name)
 
-        # Clinical Trials — asset
+        # Clinical Trials — asset (drug names, industry-funded)
         if args.source in ["all", "trials"]:
             logger.info("  [trials] Collecting by asset aliases...")
             with ClinicalTrialsCollector() as collector:
@@ -101,7 +101,31 @@ def main():
                 count = processor.process_clinical_trials(
                     trials, asset_id=asset_id, search_type="asset"
                 )
-                logger.info(f"  [trials] Stored {count} trials")
+                logger.info(f"  [trials] Stored {count} asset-level trials")
+
+            # Clinical Trials — target (protein targets, no funder filter)
+            if asset_cfg.targets:
+                logger.info(f"  [trials] Collecting by targets: {', '.join(asset_cfg.targets)}")
+                with ClinicalTrialsCollector() as collector:
+                    trials = collector.collect_by_target(asset_cfg, max_results=50)
+                    count = processor.process_clinical_trials(
+                        trials, asset_id=asset_id, search_type="target"
+                    )
+                    logger.info(f"  [trials] Stored {count} target-level trials")
+
+            # Clinical Trials — indication (per linked indication)
+            for ind_cfg in asset_cfg.indications:
+                indication_id = db_indications.get(ind_cfg.name)
+                logger.info(f"  [trials] Collecting by indication: {ind_cfg.name}")
+                with ClinicalTrialsCollector() as collector:
+                    trials = collector.collect_by_indication(
+                        asset_cfg, ind_cfg, max_results=100
+                    )
+                    count = processor.process_clinical_trials(
+                        trials, asset_id=asset_id, indication_id=indication_id,
+                        search_type="indication"
+                    )
+                    logger.info(f"  [trials] Stored {count} indication-level trials")
 
         # PubMed — asset
         if args.source in ["all", "pubmed"]:

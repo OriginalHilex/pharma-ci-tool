@@ -1,5 +1,6 @@
 import logging
 from typing import Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from database.models import (
@@ -66,9 +67,18 @@ class DataProcessor:
                         last_updated=trial.get("last_updated"),
                         search_type=search_type,
                         raw_data=trial.get("raw_data"),
-                    ).on_conflict_do_update(
+                    )
+                    # Use COALESCE to merge asset_id and indication_id:
+                    # new value wins if non-null, otherwise keep existing
+                    stmt = stmt.on_conflict_do_update(
                         index_elements=["nct_id"],
                         set_={
+                            "asset_id": func.coalesce(
+                                stmt.excluded.asset_id, ClinicalTrial.asset_id
+                            ),
+                            "indication_id": func.coalesce(
+                                stmt.excluded.indication_id, ClinicalTrial.indication_id
+                            ),
                             "status": trial.get("status"),
                             "phase": trial.get("phase"),
                             "enrollment": trial.get("enrollment"),

@@ -2,11 +2,13 @@ from typing import Any
 import logging
 from .base import BaseCollector
 from config import settings
-from config.search_config import AssetConfig, DiseaseConfig
+from config.search_config import AssetConfig, DiseaseConfig, IndicationConfig
 
 logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = "NOT_YET_RECRUITING,RECRUITING,ENROLLING_BY_INVITATION,ACTIVE_NOT_RECRUITING"
+INTERVENTIONAL_FILTER = "AREA[StudyType]INTERVENTIONAL"
+INDUSTRY_FUNDER_FILTER = "AREA[LeadSponsorClass]INDUSTRY"
 
 
 class ClinicalTrialsCollector(BaseCollector):
@@ -99,29 +101,61 @@ class ClinicalTrialsCollector(BaseCollector):
 
     def collect_by_asset(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
         """
-        Asset-specific monitoring (indication-agnostic).
+        Asset-level monitoring: drug name search with industry funder filter.
 
-        Searches the intervention field with all aliases OR'd together,
-        capturing any trial where this drug appears regardless of disease.
+        Searches the intervention field with drug aliases,
+        filtered to interventional + industry-funded trials.
         """
-        or_query = asset.or_query()
         extra_params = {
-            "query.intr": or_query,
+            "query.intr": asset.or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
+            "filter.advanced": f"{INTERVENTIONAL_FILTER} AND {INDUSTRY_FUNDER_FILTER}",
+        }
+        return self._collect_with_params(extra_params, **kwargs)
+
+    def collect_by_target(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Target-level monitoring: protein target search (no funder filter).
+
+        Searches the intervention field with target aliases,
+        filtered to interventional studies only.
+        """
+        if not asset.targets:
+            return []
+        extra_params = {
+            "query.intr": asset.target_or_query(),
+            "filter.overallStatus": ACTIVE_STATUSES,
+            "filter.advanced": INTERVENTIONAL_FILTER,
+        }
+        return self._collect_with_params(extra_params, **kwargs)
+
+    def collect_by_indication(
+        self, asset: AssetConfig, indication: IndicationConfig, **kwargs
+    ) -> list[dict[str, Any]]:
+        """
+        Indication-level monitoring: disease search linked to an asset.
+
+        Searches the condition field with indication aliases,
+        filtered to interventional studies only.
+        """
+        extra_params = {
+            "query.cond": indication.or_query(),
+            "filter.overallStatus": ACTIVE_STATUSES,
+            "filter.advanced": INTERVENTIONAL_FILTER,
         }
         return self._collect_with_params(extra_params, **kwargs)
 
     def collect_by_disease(self, disease: DiseaseConfig, **kwargs) -> list[dict[str, Any]]:
         """
-        Disease discovery monitoring (interventional only).
+        Disease discovery monitoring (standalone, no asset link).
 
         Searches the condition field with all disease aliases,
         filtered to interventional studies only.
         """
-        or_query = disease.or_query()
         extra_params = {
-            "query.cond": or_query,
+            "query.cond": disease.or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
+            "filter.advanced": INTERVENTIONAL_FILTER,
         }
         return self._collect_with_params(extra_params, **kwargs)
 
@@ -247,10 +281,6 @@ class ClinicalTrialsCollector(BaseCollector):
         except Exception as e:
             logger.error(f"Error parsing study: {e}")
             return None
-
-    def collect_by_indication(self, indication: str, **kwargs) -> list[dict[str, Any]]:
-        """Collect all trials for a specific indication (legacy method)."""
-        return self.collect(indication, **kwargs)
 
     def collect_by_drug(self, drug_name: str, **kwargs) -> list[dict[str, Any]]:
         """Collect trials for a specific drug/intervention (legacy method)."""

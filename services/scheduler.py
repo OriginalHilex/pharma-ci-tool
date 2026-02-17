@@ -35,10 +35,28 @@ def run_collection_job():
         logger.info(f"Asset monitoring: {asset_cfg.name}")
         asset_id = db_assets.get(asset_cfg.name)
 
-        # Clinical trials
+        # Clinical trials — asset (drug names, industry-funded)
         with ClinicalTrialsCollector() as collector:
             trials = collector.collect_by_asset(asset_cfg)
             processor.process_clinical_trials(trials, asset_id=asset_id, search_type="asset")
+
+        # Clinical trials — target (protein targets)
+        if asset_cfg.targets:
+            with ClinicalTrialsCollector() as collector:
+                trials = collector.collect_by_target(asset_cfg, max_results=50)
+                processor.process_clinical_trials(
+                    trials, asset_id=asset_id, search_type="target"
+                )
+
+        # Clinical trials — indication (per linked indication)
+        for ind_cfg in asset_cfg.indications:
+            indication_id = db_indications.get(ind_cfg.name)
+            with ClinicalTrialsCollector() as collector:
+                trials = collector.collect_by_indication(asset_cfg, ind_cfg, max_results=100)
+                processor.process_clinical_trials(
+                    trials, asset_id=asset_id, indication_id=indication_id,
+                    search_type="indication"
+                )
 
         # Publications
         with PubMedCollector() as collector:
