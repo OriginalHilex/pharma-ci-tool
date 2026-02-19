@@ -109,6 +109,48 @@ def create_phase_distribution(trials):
     return fig
 
 
+def create_trial_starts_by_year(trials):
+    """Bar chart of new study starts per year, stacked by phase. Last 10 years."""
+    current_year = pd.Timestamp.now().year
+    cutoff_year = current_year - 10
+
+    data = []
+    for trial in trials:
+        if trial.start_date and trial.start_date.year >= cutoff_year:
+            phase = trial.phase or "Unknown"
+            data.append({
+                "Year": trial.start_date.year,
+                "Phase": phase,
+            })
+
+    if not data:
+        return go.Figure()
+
+    df = pd.DataFrame(data)
+    counts = df.groupby(["Year", "Phase"]).size().reset_index(name="Count")
+
+    phase_order = ["PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA", "Unknown"]
+
+    fig = px.bar(
+        counts,
+        x="Year",
+        y="Count",
+        color="Phase",
+        title="Trial Starts by Year",
+        category_orders={"Phase": phase_order},
+        barmode="stack",
+    )
+
+    fig.update_layout(
+        xaxis_title="Year",
+        yaxis_title="New Trials Started",
+        xaxis=dict(dtick=1),
+        bargap=0.2,
+    )
+
+    return fig
+
+
 def create_patent_timeline(patents):
     """Create a timeline of patent filings."""
     data = []
