@@ -123,7 +123,7 @@ def main():
             if asset_cfg.targets:
                 logger.info(f"  [pubmed] Collecting by targets: {', '.join(asset_cfg.targets)}")
                 with PubMedCollector() as collector:
-                    pubs = collector.collect_by_target(asset_cfg, max_results=30)
+                    pubs = collector.collect_by_target(asset_cfg)
                     count = processor.process_publications(
                         pubs, asset_id=asset_id, search_type="target"
                     )
@@ -135,7 +135,7 @@ def main():
                 logger.info(f"  [pubmed] Collecting by indication: {ind_cfg.name}")
                 with PubMedCollector() as collector:
                     pubs = collector.collect_by_indication(
-                        asset_cfg, ind_cfg, max_results=30,
+                        asset_cfg, ind_cfg,
                     )
                     count = processor.process_publications(
                         pubs, asset_id=asset_id, indication_id=indication_id,

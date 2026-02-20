@@ -18,6 +18,12 @@ class Settings(BaseSettings):
         description="NCBI API key for higher rate limits"
     )
 
+    # USPTO PatentsView API
+    patentsview_api_key: str | None = Field(
+        default=None,
+        description="PatentsView API key for USPTO patent search"
+    )
+
     # Application
     log_level: str = Field(default="INFO")
     collection_interval_hours: int = Field(
@@ -31,10 +37,17 @@ class Settings(BaseSettings):
         description="Path to search_config.yaml (defaults to config/search_config.yaml)"
     )
 
+    # PubMed collection
+    pubmed_max_results: int = Field(
+        default=500,
+        description="Default max results per PubMed query"
+    )
+
     # API Endpoints
     clinicaltrials_api_url: str = "https://clinicaltrials.gov/api/v2"
     pubmed_api_url: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     google_news_rss_url: str = "https://news.google.com/rss/search"
+    patentsview_api_url: str = "https://search.patentsview.org/api/v1/patent/"
 
     model_config = {
         "env_file": ".env",

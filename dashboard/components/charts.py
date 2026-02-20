@@ -152,9 +152,10 @@ def create_trial_starts_by_year(trials):
 
 
 def create_publications_by_year(publications):
-    """Bar chart of publications per year. Last 10 years."""
+    """Bar chart of publications per year. Always shows full 10-year axis."""
     current_year = pd.Timestamp.now().year
     cutoff_year = current_year - 10
+    all_years = list(range(cutoff_year, current_year + 1))
 
     data = []
     for pub in publications:
@@ -162,10 +163,14 @@ def create_publications_by_year(publications):
             data.append({"Year": pub.publication_date.year})
 
     if not data:
-        return go.Figure()
-
-    df = pd.DataFrame(data)
-    counts = df.groupby("Year").size().reset_index(name="Count")
+        counts = pd.DataFrame({"Year": all_years, "Count": [0] * len(all_years)})
+    else:
+        df = pd.DataFrame(data)
+        counts = df.groupby("Year").size().reset_index(name="Count")
+        # Reindex to ensure all years are present
+        full = pd.DataFrame({"Year": all_years})
+        counts = full.merge(counts, on="Year", how="left").fillna(0)
+        counts["Count"] = counts["Count"].astype(int)
 
     fig = px.bar(
         counts,
@@ -180,32 +185,6 @@ def create_publications_by_year(publications):
         xaxis=dict(dtick=1),
         bargap=0.2,
     )
-
-    return fig
-
-
-def create_journal_distribution(publications):
-    """Pie chart of top journals by publication count."""
-    journals = [p.journal or "Unknown" for p in publications]
-    journal_counts = Counter(journals)
-
-    # Top 10, rest as "Other"
-    top = journal_counts.most_common(10)
-    other_count = sum(journal_counts.values()) - sum(c for _, c in top)
-    names = [j for j, _ in top]
-    values = [c for _, c in top]
-    if other_count > 0:
-        names.append("Other")
-        values.append(other_count)
-
-    fig = px.pie(
-        values=values,
-        names=names,
-        title="Top Journals",
-        hole=0.4,
-    )
-
-    fig.update_traces(textposition="inside", textinfo="percent+label")
 
     return fig
 

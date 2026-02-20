@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database.connection import get_session
 from database.models import Asset, Indication, Publication
-from dashboard.components.charts import create_publications_by_year, create_journal_distribution
+from dashboard.components.charts import create_publications_by_year
 
 st.set_page_config(page_title="Publications - CI Tool", layout="wide")
 st.title("PubMed Publications")
@@ -32,7 +32,7 @@ try:
             st.header(asset.name)
 
             # ── Filters ─────────────────────────────────────────────
-            fcol1, fcol2 = st.columns(2)
+            fcol1, fcol2, fcol3 = st.columns(3)
 
             with fcol1:
                 view_mode = st.selectbox(
@@ -76,6 +76,20 @@ try:
                         key=f"pub_indication_{asset.id}",
                     )
 
+            with fcol3:
+                time_options = {
+                    "Last 7 days": 7,
+                    "Last 30 days": 30,
+                    "Last 90 days": 90,
+                    "All time": None,
+                }
+                selected_time = st.selectbox(
+                    "Time Period",
+                    list(time_options.keys()),
+                    index=3,
+                    key=f"pub_time_{asset.id}",
+                )
+
             # ── Query ───────────────────────────────────────────────
             query = session.query(Publication).filter(
                 Publication.asset_id == asset.id
@@ -94,15 +108,26 @@ try:
                 if ind:
                     query = query.filter(Publication.indication_id == ind.id)
 
-            publications = query.order_by(Publication.publication_date.desc()).all()
+            all_pubs = query.order_by(Publication.publication_date.desc()).all()
 
             # Deduplicate for "All" mode
             if view_mode == "All":
                 seen = {}
-                for p in publications:
+                for p in all_pubs:
                     if p.pmid not in seen:
                         seen[p.pmid] = p
-                publications = list(seen.values())
+                all_pubs = list(seen.values())
+
+            # Apply timeframe filter (chart always uses all_pubs for full 10-year view)
+            time_days = time_options[selected_time]
+            if time_days:
+                cutoff = datetime.utcnow() - timedelta(days=time_days)
+                publications = [
+                    p for p in all_pubs
+                    if p.publication_date and p.publication_date >= cutoff.date()
+                ]
+            else:
+                publications = all_pubs
 
             # ── KPIs ────────────────────────────────────────────────
             st.divider()
@@ -118,23 +143,12 @@ try:
 
             # ── Charts ──────────────────────────────────────────────
             st.divider()
-            ccol1, ccol2 = st.columns(2)
-
-            with ccol1:
-                st.subheader("Publications by Year")
-                if publications:
-                    fig = create_publications_by_year(publications)
-                    st.plotly_chart(fig, use_container_width=True, key=f"pub_year_{asset.id}")
-                else:
-                    st.info("No publications to display.")
-
-            with ccol2:
-                st.subheader("Top Journals")
-                if publications:
-                    fig = create_journal_distribution(publications)
-                    st.plotly_chart(fig, use_container_width=True, key=f"pub_journal_{asset.id}")
-                else:
-                    st.info("No publications to display.")
+            st.subheader("Publications by Year")
+            if all_pubs:
+                fig = create_publications_by_year(all_pubs)
+                st.plotly_chart(fig, use_container_width=True, key=f"pub_year_{asset.id}")
+            else:
+                st.info("No publications to display.")
 
             # ── Publications Table ──────────────────────────────────
             st.divider()

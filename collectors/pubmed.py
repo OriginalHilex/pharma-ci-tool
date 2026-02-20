@@ -7,6 +7,12 @@ from config.search_config import AssetConfig, DiseaseConfig, IndicationConfig
 
 logger = logging.getLogger(__name__)
 
+# Keywords ANDed with target queries to filter out basic biology/diagnostics
+PUBMED_TARGET_KEYWORDS = (
+    "drug OR therapy OR antibody OR mAb OR monoclonal OR ADC "
+    "OR inhibitor OR clinical OR trial OR phase"
+)
+
 
 class PubMedCollector(BaseCollector):
     """Collector for PubMed via NCBI Entrez E-utilities."""
@@ -26,17 +32,19 @@ class PubMedCollector(BaseCollector):
         Args:
             query: Search term (drug name, indication, etc.)
             **kwargs:
-                - max_results: Maximum number of results (default 50)
+                - max_results: Maximum number of results (default settings.pubmed_max_results)
+                - sort: Entrez sort order ("relevance" or "pub date")
                 - date_range: Tuple of (start_date, end_date) in YYYY/MM/DD format
 
         Returns:
             List of publication records
         """
-        max_results = kwargs.get("max_results", 50)
+        max_results = kwargs.get("max_results", settings.pubmed_max_results)
+        sort = kwargs.get("sort", "relevance")
         date_range = kwargs.get("date_range")
 
         # Step 1: Search for PMIDs
-        pmids = self._search(query, max_results, date_range)
+        pmids = self._search(query, max_results, date_range, sort=sort)
         if not pmids:
             return []
 
@@ -61,11 +69,13 @@ class PubMedCollector(BaseCollector):
         """
         Target/biomarker monitoring: broad keyword search for protein targets.
 
-        Searches PubMed with target aliases (e.g. "Claudin 18.2" OR "CLDN18.2").
+        Searches PubMed with target aliases ANDed with drug-context keywords
+        to filter out basic biology/diagnostics.
         """
         if not asset.targets:
             return []
-        query = asset.target_or_query()
+        query = f"({asset.target_or_query()}) AND ({PUBMED_TARGET_KEYWORDS})"
+        kwargs.setdefault("sort", "pub date")
         logger.info(f"PubMed target query: {query}")
         return self.collect(query, **kwargs)
 
@@ -82,6 +92,7 @@ class PubMedCollector(BaseCollector):
         to find publications about the drug in a specific disease context.
         """
         query = f"({asset.or_query()}) AND ({indication.or_query()})"
+        kwargs.setdefault("sort", "pub date")
         logger.info(f"PubMed indication query: {query}")
         return self.collect(query, **kwargs)
 
@@ -115,6 +126,7 @@ class PubMedCollector(BaseCollector):
         query: str,
         max_results: int,
         date_range: tuple[str, str] | None = None,
+        sort: str = "relevance",
     ) -> list[str]:
         """Search PubMed and return list of PMIDs."""
         params = {
@@ -122,7 +134,7 @@ class PubMedCollector(BaseCollector):
             "term": query,
             "retmax": max_results,
             "retmode": "json",
-            "sort": "relevance",
+            "sort": sort,
         }
 
         if self.api_key:
