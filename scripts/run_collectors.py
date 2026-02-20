@@ -118,15 +118,30 @@ def main():
                     )
                     logger.info(f"  [trials] Stored {count} indication-level trials")
 
-        # PubMed — asset
+        # PubMed — target (protein targets)
         if args.source in ["all", "pubmed"]:
-            logger.info("  [pubmed] Collecting by asset aliases...")
-            with PubMedCollector() as collector:
-                pubs = collector.collect_by_asset(asset_cfg, max_results=30)
-                count = processor.process_publications(
-                    pubs, asset_id=asset_id, search_type="asset"
-                )
-                logger.info(f"  [pubmed] Stored {count} publications")
+            if asset_cfg.targets:
+                logger.info(f"  [pubmed] Collecting by targets: {', '.join(asset_cfg.targets)}")
+                with PubMedCollector() as collector:
+                    pubs = collector.collect_by_target(asset_cfg, max_results=30)
+                    count = processor.process_publications(
+                        pubs, asset_id=asset_id, search_type="target"
+                    )
+                    logger.info(f"  [pubmed] Stored {count} target-level publications")
+
+            # PubMed — indication (per linked indication)
+            for ind_cfg in asset_cfg.indications:
+                indication_id = db_indications.get(ind_cfg.name)
+                logger.info(f"  [pubmed] Collecting by indication: {ind_cfg.name}")
+                with PubMedCollector() as collector:
+                    pubs = collector.collect_by_indication(
+                        asset_cfg, ind_cfg, max_results=30,
+                    )
+                    count = processor.process_publications(
+                        pubs, asset_id=asset_id, indication_id=indication_id,
+                        search_type="indication"
+                    )
+                    logger.info(f"  [pubmed] Stored {count} indication-level publications")
 
         # News — asset
         if args.source in ["all", "news"]:

@@ -3,7 +3,7 @@ import logging
 import xml.etree.ElementTree as ET
 from .base import BaseCollector
 from config import settings
-from config.search_config import AssetConfig, DiseaseConfig
+from config.search_config import AssetConfig, DiseaseConfig, IndicationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,34 @@ class PubMedCollector(BaseCollector):
         """
         query = asset.or_query()
         logger.info(f"PubMed asset query: {query}")
+        return self.collect(query, **kwargs)
+
+    def collect_by_target(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
+        """
+        Target/biomarker monitoring: broad keyword search for protein targets.
+
+        Searches PubMed with target aliases (e.g. "Claudin 18.2" OR "CLDN18.2").
+        """
+        if not asset.targets:
+            return []
+        query = asset.target_or_query()
+        logger.info(f"PubMed target query: {query}")
+        return self.collect(query, **kwargs)
+
+    def collect_by_indication(
+        self,
+        asset: AssetConfig,
+        indication: IndicationConfig,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """
+        Indication-level monitoring: disease search linked to an asset.
+
+        Searches PubMed with indication aliases combined with asset aliases
+        to find publications about the drug in a specific disease context.
+        """
+        query = f"({asset.or_query()}) AND ({indication.or_query()})"
+        logger.info(f"PubMed indication query: {query}")
         return self.collect(query, **kwargs)
 
     def collect_by_disease(

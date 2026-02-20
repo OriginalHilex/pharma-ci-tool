@@ -53,10 +53,23 @@ def run_collection_job():
                     search_type="indication"
                 )
 
-        # Publications
-        with PubMedCollector() as collector:
-            pubs = collector.collect_by_asset(asset_cfg)
-            processor.process_publications(pubs, asset_id=asset_id, search_type="asset")
+        # Publications — target (protein targets)
+        if asset_cfg.targets:
+            with PubMedCollector() as collector:
+                pubs = collector.collect_by_target(asset_cfg)
+                processor.process_publications(
+                    pubs, asset_id=asset_id, search_type="target"
+                )
+
+        # Publications — indication (per linked indication)
+        for ind_cfg in asset_cfg.indications:
+            indication_id = db_indications.get(ind_cfg.name)
+            with PubMedCollector() as collector:
+                pubs = collector.collect_by_indication(asset_cfg, ind_cfg)
+                processor.process_publications(
+                    pubs, asset_id=asset_id, indication_id=indication_id,
+                    search_type="indication"
+                )
 
         # News
         with NewsCollector() as collector:

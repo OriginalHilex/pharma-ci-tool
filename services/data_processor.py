@@ -172,42 +172,53 @@ class DataProcessor:
         self,
         publications: list[dict[str, Any]],
         asset_id: int | None = None,
+        indication_id: int | None = None,
         search_type: str | None = None,
     ) -> int:
-        """Store publication data."""
+        """
+        Store publication data. Publications are immutable once inserted.
+
+        - New PMID: insert.
+        - Existing PMID: merge asset_id/indication_id if missing, nothing else.
+        """
         if not publications:
             return 0
 
-        count = 0
+        new_count = 0
         with get_session() as session:
             for pub in publications:
                 try:
-                    stmt = insert(Publication).values(
-                        pmid=pub["pmid"],
-                        asset_id=asset_id,
-                        title=pub.get("title"),
-                        authors=pub.get("authors"),
-                        journal=pub.get("journal"),
-                        publication_date=pub.get("publication_date"),
-                        abstract=pub.get("abstract"),
-                        doi=pub.get("doi"),
-                        source_url=pub.get("source_url"),
-                        search_type=search_type,
-                    ).on_conflict_do_update(
-                        index_elements=["pmid"],
-                        set_={
-                            "title": pub.get("title"),
-                            "authors": pub.get("authors"),
-                            "abstract": pub.get("abstract"),
-                        },
-                    )
-                    session.execute(stmt)
-                    count += 1
+                    pmid = pub["pmid"]
+                    existing = session.query(Publication).filter_by(pmid=pmid).first()
+
+                    if not existing:
+                        session.add(Publication(
+                            pmid=pmid,
+                            asset_id=asset_id,
+                            indication_id=indication_id,
+                            title=pub.get("title") or "(No title)",
+                            authors=pub.get("authors"),
+                            journal=pub.get("journal"),
+                            publication_date=pub.get("publication_date"),
+                            abstract=pub.get("abstract"),
+                            doi=pub.get("doi"),
+                            source_url=pub.get("source_url"),
+                            search_type=search_type,
+                        ))
+                        new_count += 1
+                        continue
+
+                    # Merge IDs if missing
+                    if asset_id and not existing.asset_id:
+                        existing.asset_id = asset_id
+                    if indication_id and not existing.indication_id:
+                        existing.indication_id = indication_id
+
                 except Exception as e:
                     logger.error(f"Error storing publication {pub.get('pmid')}: {e}")
 
-        logger.info(f"Processed {count} publications")
-        return count
+        logger.info(f"Processed {new_count} new publications (of {len(publications)} incoming)")
+        return new_count
 
     def process_news(
         self,

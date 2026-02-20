@@ -151,6 +151,65 @@ def create_trial_starts_by_year(trials):
     return fig
 
 
+def create_publications_by_year(publications):
+    """Bar chart of publications per year. Last 10 years."""
+    current_year = pd.Timestamp.now().year
+    cutoff_year = current_year - 10
+
+    data = []
+    for pub in publications:
+        if pub.publication_date and pub.publication_date.year >= cutoff_year:
+            data.append({"Year": pub.publication_date.year})
+
+    if not data:
+        return go.Figure()
+
+    df = pd.DataFrame(data)
+    counts = df.groupby("Year").size().reset_index(name="Count")
+
+    fig = px.bar(
+        counts,
+        x="Year",
+        y="Count",
+        title="Publications by Year",
+    )
+
+    fig.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Publications",
+        xaxis=dict(dtick=1),
+        bargap=0.2,
+    )
+
+    return fig
+
+
+def create_journal_distribution(publications):
+    """Pie chart of top journals by publication count."""
+    journals = [p.journal or "Unknown" for p in publications]
+    journal_counts = Counter(journals)
+
+    # Top 10, rest as "Other"
+    top = journal_counts.most_common(10)
+    other_count = sum(journal_counts.values()) - sum(c for _, c in top)
+    names = [j for j, _ in top]
+    values = [c for _, c in top]
+    if other_count > 0:
+        names.append("Other")
+        values.append(other_count)
+
+    fig = px.pie(
+        values=values,
+        names=names,
+        title="Top Journals",
+        hole=0.4,
+    )
+
+    fig.update_traces(textposition="inside", textinfo="percent+label")
+
+    return fig
+
+
 def create_patent_timeline(patents):
     """Create a timeline of patent filings."""
     data = []

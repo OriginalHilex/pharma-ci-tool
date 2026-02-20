@@ -139,6 +139,7 @@ class Publication(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     pmid: Mapped[str] = mapped_column(String(20), unique=True)
     asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id"))
+    indication_id: Mapped[Optional[int]] = mapped_column(ForeignKey("indications.id"))
     title: Mapped[str] = mapped_column(Text)
     authors: Mapped[Optional[str]] = mapped_column(Text)
     journal: Mapped[Optional[str]] = mapped_column(String(255))
@@ -151,6 +152,7 @@ class Publication(Base):
 
     # Relationships
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="publications")
+    indication: Mapped[Optional["Indication"]] = relationship()
 
     __table_args__ = (
         Index("ix_publications_publication_date", "publication_date"),
@@ -181,7 +183,7 @@ class NewsArticle(Base):
 
 
 class Patent(Base):
-    """Patent from Google Patents."""
+    """Patent record."""
     __tablename__ = "patents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
