@@ -157,28 +157,34 @@ class PubMedCollector(BaseCollector):
             return []
 
     def _fetch_details(self, pmids: list[str]) -> list[dict[str, Any]]:
-        """Fetch article details for a list of PMIDs."""
+        """Fetch article details for a list of PMIDs, batched to avoid URL limits."""
         if not pmids:
             return []
 
-        params = {
-            "db": "pubmed",
-            "id": ",".join(pmids),
-            "retmode": "xml",
-        }
+        publications = []
+        batch_size = 100
 
-        if self.api_key:
-            params["api_key"] = self.api_key
+        for i in range(0, len(pmids), batch_size):
+            batch = pmids[i : i + batch_size]
+            params = {
+                "db": "pubmed",
+                "id": ",".join(batch),
+                "retmode": "xml",
+            }
 
-        try:
-            response = self._make_request(
-                f"{self.base_url}/efetch.fcgi",
-                params=params,
-            )
-            return self._parse_xml_response(response.text)
-        except Exception as e:
-            logger.error(f"Error fetching PubMed details: {e}")
-            return []
+            if self.api_key:
+                params["api_key"] = self.api_key
+
+            try:
+                response = self._make_request(
+                    f"{self.base_url}/efetch.fcgi",
+                    params=params,
+                )
+                publications.extend(self._parse_xml_response(response.text))
+            except Exception as e:
+                logger.error(f"Error fetching PubMed details (batch {i // batch_size + 1}): {e}")
+
+        return publications
 
     def _parse_xml_response(self, xml_text: str) -> list[dict[str, Any]]:
         """Parse PubMed XML response."""
