@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = "NOT_YET_RECRUITING,RECRUITING,ENROLLING_BY_INVITATION,ACTIVE_NOT_RECRUITING"
 INTERVENTIONAL_FILTER = "AREA[StudyType]INTERVENTIONAL"
-INDUSTRY_FUNDER_FILTER = "AREA[LeadSponsorClass]INDUSTRY"
+INDUSTRY_FUNDER_FILTER = "(AREA[LeadSponsorClass]INDUSTRY OR AREA[CollaboratorClass]INDUSTRY)"
 
 
 class ClinicalTrialsCollector(BaseCollector):
@@ -115,15 +115,15 @@ class ClinicalTrialsCollector(BaseCollector):
 
     def collect_by_target(self, asset: AssetConfig, **kwargs) -> list[dict[str, Any]]:
         """
-        Target-level monitoring: protein target search.
+        Target-level monitoring: broad keyword search for protein targets.
 
-        Searches the intervention field with target aliases,
-        filtered to interventional + industry-funded studies.
+        Searches all fields (equivalent to ClinicalTrials.gov "Other terms")
+        with target aliases, filtered to interventional + industry-funded studies.
         """
         if not asset.targets:
             return []
         extra_params = {
-            "query.intr": asset.target_or_query(),
+            "query.term": asset.target_or_query(),
             "filter.overallStatus": ACTIVE_STATUSES,
             "filter.advanced": f"{INTERVENTIONAL_FILTER} AND {INDUSTRY_FUNDER_FILTER}",
         }
