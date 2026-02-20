@@ -33,77 +33,118 @@ class DataProcessor:
         """
         Store clinical trial data with change detection.
 
-        Before upserting, compares tracked fields against existing records
-        and logs changes to clinical_trial_changes.
+        - New NCT IDs: insert + create "new_trial" change record.
+        - Existing, same last_updated: skip (only merge asset_id/indication_id if needed).
+        - Existing, different last_updated: run field diff, update only if changed.
         """
         if not trials:
             return 0
 
-        count = 0
+        new_count = 0
+        updated_count = 0
+        skipped_count = 0
         with get_session() as session:
             for trial in trials:
                 try:
                     nct_id = trial["nct_id"]
+                    incoming_last_updated = trial.get("last_updated")
 
-                    # Detect changes against existing record
                     existing = session.query(ClinicalTrial).filter_by(nct_id=nct_id).first()
-                    if existing:
-                        self._detect_trial_changes(session, existing, trial)
 
-                    stmt = insert(ClinicalTrial).values(
-                        nct_id=nct_id,
-                        asset_id=asset_id,
-                        indication_id=indication_id,
-                        title=trial.get("title"),
-                        status=trial.get("status"),
-                        phase=trial.get("phase"),
-                        start_date=trial.get("start_date"),
-                        completion_date=trial.get("completion_date"),
-                        enrollment=trial.get("enrollment"),
-                        sponsor=trial.get("sponsor"),
-                        primary_endpoint=trial.get("primary_endpoint"),
-                        results_summary=trial.get("summary"),
-                        source_url=trial.get("source_url"),
-                        last_updated=trial.get("last_updated"),
-                        search_type=search_type,
-                        raw_data=trial.get("raw_data"),
-                    )
-                    # Use COALESCE to merge asset_id and indication_id:
-                    # new value wins if non-null, otherwise keep existing
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=["nct_id"],
-                        set_={
-                            "asset_id": func.coalesce(
-                                stmt.excluded.asset_id, ClinicalTrial.asset_id
-                            ),
-                            "indication_id": func.coalesce(
-                                stmt.excluded.indication_id, ClinicalTrial.indication_id
-                            ),
-                            "status": trial.get("status"),
-                            "phase": trial.get("phase"),
-                            "enrollment": trial.get("enrollment"),
-                            "completion_date": trial.get("completion_date"),
-                            "primary_endpoint": trial.get("primary_endpoint"),
-                            "results_summary": trial.get("summary"),
-                            "last_updated": trial.get("last_updated"),
-                            "raw_data": trial.get("raw_data"),
-                        },
-                    )
-                    session.execute(stmt)
-                    count += 1
+                    if not existing:
+                        # ── New trial: insert ────────────────────────
+                        new_trial = ClinicalTrial(
+                            nct_id=nct_id,
+                            asset_id=asset_id,
+                            indication_id=indication_id,
+                            title=trial.get("title"),
+                            status=trial.get("status"),
+                            phase=trial.get("phase"),
+                            start_date=trial.get("start_date"),
+                            completion_date=trial.get("completion_date"),
+                            enrollment=trial.get("enrollment"),
+                            sponsor=trial.get("sponsor"),
+                            primary_endpoint=trial.get("primary_endpoint"),
+                            results_summary=trial.get("summary"),
+                            source_url=trial.get("source_url"),
+                            last_updated=incoming_last_updated,
+                            search_type=search_type,
+                            raw_data=trial.get("raw_data"),
+                        )
+                        session.add(new_trial)
+                        session.flush()
+                        session.add(ClinicalTrialChange(
+                            nct_id=nct_id,
+                            field_name="new_trial",
+                            old_value=None,
+                            new_value=nct_id,
+                        ))
+                        new_count += 1
+                        continue
+
+                    # ── Existing trial ───────────────────────────
+                    # Merge asset_id/indication_id if missing
+                    id_merged = False
+                    if asset_id and not existing.asset_id:
+                        existing.asset_id = asset_id
+                        id_merged = True
+                    if indication_id and not existing.indication_id:
+                        existing.indication_id = indication_id
+                        id_merged = True
+
+                    # Normalize to date for comparison (DB stores date, collector parses datetime)
+                    existing_lu = existing.last_updated
+                    incoming_lu = incoming_last_updated
+                    if hasattr(existing_lu, "date"):
+                        existing_lu = existing_lu.date()
+                    if hasattr(incoming_lu, "date"):
+                        incoming_lu = incoming_lu.date()
+
+                    if existing_lu == incoming_lu:
+                        # No update needed — count as updated only if IDs were merged
+                        if id_merged:
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+                        continue
+
+                    # last_updated differs — run field-level diff
+                    has_changes = self._detect_trial_changes(session, existing, trial)
+
+                    if has_changes:
+                        existing.title = trial.get("title") or existing.title
+                        existing.status = trial.get("status")
+                        existing.phase = trial.get("phase")
+                        existing.start_date = trial.get("start_date") or existing.start_date
+                        existing.completion_date = trial.get("completion_date")
+                        existing.enrollment = trial.get("enrollment")
+                        existing.sponsor = trial.get("sponsor") or existing.sponsor
+                        existing.primary_endpoint = trial.get("primary_endpoint")
+                        existing.results_summary = trial.get("summary")
+                        existing.raw_data = trial.get("raw_data")
+                        updated_count += 1
+
+                    # Always update last_updated when it changed
+                    existing.last_updated = incoming_last_updated
+
                 except Exception as e:
                     logger.error(f"Error storing trial {trial.get('nct_id')}: {e}")
 
-        logger.info(f"Processed {count} clinical trials")
-        return count
+        total = new_count + updated_count
+        logger.info(
+            f"Processed {total} clinical trials "
+            f"({new_count} new, {updated_count} updated, {skipped_count} skipped)"
+        )
+        return total
 
     def _detect_trial_changes(
         self,
         session: Session,
         existing: ClinicalTrial,
         new_data: dict[str, Any],
-    ) -> None:
-        """Compare tracked fields and record changes."""
+    ) -> bool:
+        """Compare tracked fields and record changes. Returns True if any changed."""
+        found = False
         for field_name in TRACKED_TRIAL_FIELDS:
             old_value = getattr(existing, field_name, None)
             new_value = new_data.get(field_name)
@@ -124,6 +165,8 @@ class DataProcessor:
                     f"Change detected: {existing.nct_id} {field_name}: "
                     f"{old_str} -> {new_str}"
                 )
+                found = True
+        return found
 
     def process_publications(
         self,
