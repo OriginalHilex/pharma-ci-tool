@@ -1,6 +1,8 @@
 from typing import Any
 import logging
+import re
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from .base import BaseCollector
 from config import settings
 from config.search_config import AssetConfig, DiseaseConfig, IndicationConfig
@@ -203,6 +205,69 @@ class PubMedCollector(BaseCollector):
 
         return publications
 
+    # Month name/abbreviation → number
+    _MONTH_MAP = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "june": 6, "july": 7, "august": 8, "september": 9,
+        "october": 10, "november": 11, "december": 12,
+    }
+
+    def _parse_date_element(self, elem: ET.Element) -> datetime | None:
+        """Parse a PubMed date element with Year/Month/Day children.
+
+        Handles numeric months (01-12) and abbreviations (Jan, Feb, ...).
+        Always returns a date if a year is present.
+        """
+        year_elem = elem.find("Year")
+        if year_elem is None or not year_elem.text:
+            return None
+
+        year = int(year_elem.text)
+        month = 1
+        day = 1
+
+        month_elem = elem.find("Month")
+        if month_elem is not None and month_elem.text:
+            m = month_elem.text.strip()
+            if m.isdigit():
+                month = int(m)
+            else:
+                month = self._MONTH_MAP.get(m.lower(), 1)
+
+        day_elem = elem.find("Day")
+        if day_elem is not None and day_elem.text and day_elem.text.strip().isdigit():
+            day = int(day_elem.text.strip())
+
+        try:
+            return datetime(year, month, day)
+        except ValueError:
+            # Bad day (e.g. Feb 30) — fall back to first of month
+            return datetime(year, month, 1)
+
+    def _parse_medline_date(self, text: str) -> datetime | None:
+        """Parse free-text MedlineDate (e.g. 'Jan-Feb 2023', 'Spring 2019', '2018 Dec-2019 Jan').
+
+        Extracts the first 4-digit year and optional month. Never returns None if a year is present.
+        """
+        # Extract first 4-digit year
+        year_match = re.search(r"\b((?:19|20)\d{2})\b", text)
+        if not year_match:
+            return None
+
+        year = int(year_match.group(1))
+        month = 1
+
+        # Try to find a month name/abbreviation
+        for token in re.split(r"[\s\-–/]+", text):
+            m = self._MONTH_MAP.get(token.lower().rstrip("."))
+            if m:
+                month = m
+                break
+
+        return datetime(year, month, 1)
+
     def _parse_article(self, article: ET.Element) -> dict[str, Any] | None:
         """Parse a single PubMed article."""
         try:
@@ -244,20 +309,30 @@ class PubMedCollector(BaseCollector):
             journal_elem = article_elem.find(".//Journal/Title")
             journal = journal_elem.text if journal_elem is not None else None
 
-            # Publication date
+            # Publication date — try multiple sources in order of precision
             pub_date = None
-            pub_date_elem = article_elem.find(".//PubDate")
-            if pub_date_elem is not None:
-                year = pub_date_elem.find("Year")
-                month = pub_date_elem.find("Month")
-                day = pub_date_elem.find("Day")
-                if year is not None and year.text:
-                    date_str = year.text
-                    if month is not None and month.text:
-                        date_str += f"-{month.text}"
-                    if day is not None and day.text:
-                        date_str += f"-{day.text}"
-                    pub_date = self._parse_date(date_str)
+
+            # 1) ArticleDate (always numeric YYYY-MM-DD)
+            article_date_elem = article_elem.find(".//ArticleDate")
+            if article_date_elem is not None:
+                pub_date = self._parse_date_element(article_date_elem)
+
+            # 2) PubDate (may use month abbreviations)
+            if pub_date is None:
+                pub_date_elem = article_elem.find(".//PubDate")
+                if pub_date_elem is not None:
+                    # Check for MedlineDate free-text first
+                    medline_date = pub_date_elem.find("MedlineDate")
+                    if medline_date is not None and medline_date.text:
+                        pub_date = self._parse_medline_date(medline_date.text)
+                    else:
+                        pub_date = self._parse_date_element(pub_date_elem)
+
+            # 3) DateCompleted
+            if pub_date is None:
+                date_completed = medline.find(".//DateCompleted")
+                if date_completed is not None:
+                    pub_date = self._parse_date_element(date_completed)
 
             # DOI
             doi = None
